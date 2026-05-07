@@ -308,9 +308,15 @@ def compute_all(df):
     dx = (100*(out['PDI'] - out['NDI']).abs() / (out['PDI'] + out['NDI']).replace(0, np.nan))
     out['ADX_14'] = dx.ewm(com=13, min_periods=14, adjust=False).mean()
 
-    # Aroon 25
-    out['Aroon_Up']   = h.rolling(26).apply(lambda x: (x.argmax() / 25) * 100, raw=True)
-    out['Aroon_Down'] = l.rolling(26).apply(lambda x: (x.argmin() / 25) * 100, raw=True)
+    # Aroon 25 — use nanargmax to handle NaN windows safely
+    def _aroon_up(x):
+        try: return (np.nanargmax(x) / 25) * 100
+        except: return np.nan
+    def _aroon_dn(x):
+        try: return (np.nanargmin(x) / 25) * 100
+        except: return np.nan
+    out['Aroon_Up']   = h.rolling(26).apply(_aroon_up, raw=True)
+    out['Aroon_Down'] = l.rolling(26).apply(_aroon_dn, raw=True)
     out['Aroon_Osc']  = out['Aroon_Up'] - out['Aroon_Down']
 
     # Supertrend (10, 3)
@@ -825,18 +831,24 @@ def main():
                     return 'color:#3fb950' if f > 0 else ('color:#f85149' if f < 0 else '')
                 except: return ''
 
-            styled = view.style
-            if 'Signal' in view.columns:
-                styled = styled.applymap(style_signal, subset=['Signal'])
-            if 'Chg_Pct' in view.columns:
-                styled = styled.applymap(style_chg, subset=['Chg_Pct'])
-                styled = styled.format({'Chg_Pct': '{:.2f}%'})
-            if 'Score' in view.columns:
-                styled = styled.background_gradient(subset=['Score'],
-                    cmap='RdYlGn', vmin=-15, vmax=15)
-
-            st.dataframe(styled, use_container_width=True, height=500,
-                         hide_index=True)
+            try:
+                styled = view.style
+                if 'Signal' in view.columns:
+                    styled = styled.map(style_signal, subset=['Signal'])
+                if 'Chg_Pct' in view.columns:
+                    styled = styled.map(style_chg, subset=['Chg_Pct'])
+                fmt = {}
+                if 'Chg_Pct' in view.columns: fmt['Chg_Pct'] = '{:.2f}%'
+                if 'Close'   in view.columns: fmt['Close']   = '₹{:.2f}'
+                if fmt: styled = styled.format(fmt, na_rep='-')
+                if 'Score' in view.columns:
+                    styled = styled.background_gradient(
+                        subset=['Score'], cmap='RdYlGn', vmin=-15, vmax=15)
+                st.dataframe(styled, use_container_width=True, height=500,
+                             hide_index=True)
+            except Exception:
+                st.dataframe(view, use_container_width=True, height=500,
+                             hide_index=True)
 
             # Download
             csv = filtered.to_csv(index=False)
@@ -914,12 +926,16 @@ def main():
                               ['Ticker','Close','Chg_Pct','RSI_14','ADX_14',
                                'CMF_20','Score','Signal']]
                 if not top_buy.empty:
-                    st.dataframe(top_buy.style
-                        .applymap(style_signal, subset=['Signal'])
-                        .format({'Close':'₹{:.2f}','Chg_Pct':'{:.2f}%',
-                                 'RSI_14':'{:.1f}','ADX_14':'{:.1f}',
-                                 'CMF_20':'{:.3f}'}),
-                        use_container_width=True, hide_index=True)
+                    try:
+                        st.dataframe(
+                            top_buy.style
+                                .map(style_signal, subset=['Signal'])
+                                .format({'Close':'₹{:.2f}','Chg_Pct':'{:.2f}%',
+                                         'RSI_14':'{:.1f}','ADX_14':'{:.1f}',
+                                         'CMF_20':'{:.3f}'}, na_rep='-'),
+                            use_container_width=True, hide_index=True)
+                    except Exception:
+                        st.dataframe(top_buy, use_container_width=True, hide_index=True)
 
             with sub_tabs[1]:
                 top_sell = df[df['Signal'].isin(['STRONG SELL','SELL'])] \
@@ -927,12 +943,16 @@ def main():
                                ['Ticker','Close','Chg_Pct','RSI_14','ADX_14',
                                 'CMF_20','Score','Signal']]
                 if not top_sell.empty:
-                    st.dataframe(top_sell.style
-                        .applymap(style_signal, subset=['Signal'])
-                        .format({'Close':'₹{:.2f}','Chg_Pct':'{:.2f}%',
-                                 'RSI_14':'{:.1f}','ADX_14':'{:.1f}',
-                                 'CMF_20':'{:.3f}'}),
-                        use_container_width=True, hide_index=True)
+                    try:
+                        st.dataframe(
+                            top_sell.style
+                                .map(style_signal, subset=['Signal'])
+                                .format({'Close':'₹{:.2f}','Chg_Pct':'{:.2f}%',
+                                         'RSI_14':'{:.1f}','ADX_14':'{:.1f}',
+                                         'CMF_20':'{:.3f}'}, na_rep='-'),
+                            use_container_width=True, hide_index=True)
+                    except Exception:
+                        st.dataframe(top_sell, use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.markdown(
