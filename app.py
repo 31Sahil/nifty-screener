@@ -481,16 +481,22 @@ def render_sidebar(df):
         def add_slider(label, col, default_min=None, default_max=None):
             if col not in df.columns: return
             vals = df[col].dropna()
-            if vals.empty: return
+            if vals.empty or len(vals) < 2: return
             mn, mx = float(vals.min()), float(vals.max())
-            if mn == mx: return
-            d_min = default_min if default_min is not None else mn
-            d_max = default_max if default_max is not None else mx
-            d_min = max(mn, d_min); d_max = min(mx, d_max)
-            lo, hi = st.slider(label, mn, mx, (d_min, d_max),
-                               format="%.1f", label_visibility="visible")
-            if lo > mn or hi < mx:
-                filters[col] = (lo, hi)
+            if mn >= mx: return
+            # Clamp defaults strictly within actual data range to avoid invalid slider
+            lo_def = float(np.clip(default_min if default_min is not None else mn, mn, mx))
+            hi_def = float(np.clip(default_max if default_max is not None else mx, mn, mx))
+            if lo_def >= hi_def:
+                lo_def, hi_def = mn, mx   # fallback: show full range
+            try:
+                lo, hi = st.slider(label, min_value=mn, max_value=mx,
+                                   value=(lo_def, hi_def),
+                                   format="%.1f", label_visibility="visible")
+                if lo > mn or hi < mx:
+                    filters[col] = (lo, hi)
+            except Exception:
+                pass   # skip slider if data is still problematic
 
         # ── Momentum ─────────────────────────────────────────────────────
         st.markdown('<p class="sidebar-section">Momentum</p>', unsafe_allow_html=True)
